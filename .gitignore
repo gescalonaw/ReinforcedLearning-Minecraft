@@ -1,0 +1,23 @@
+# Datos y resultados (pesados: no van a GitHub)
+data/
+logs/
+checkpoints/
+runs/
+out/
+*.mp4
+*.gif
+*.npz
+*.npy
+*.pt
+*.pth
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Editor / sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

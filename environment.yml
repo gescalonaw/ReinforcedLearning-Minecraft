@@ -1,0 +1,23 @@
+# Entorno conda del proyecto.
+# MineRL 0.4.4 NO se instala desde aquí: requiere el parche de MixinGradle.
+# Sigue docs/INSTALL_MINERL.md (paso 5) después de crear el entorno.
+#
+#   conda env create -f environment.yml
+#   conda activate minerl
+name: minerl
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - openjdk=8
+  - pip
+  - pip:
+      - "pip<24"
+      - setuptools==65.5.0
+      - wheel==0.38.4
+      - "numpy<2"
+      - "opencv-python<4.11"
+      - matplotlib
+      - imageio
+      - imageio-ffmpeg
+      - scikit-learn
