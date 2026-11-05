@@ -3,6 +3,7 @@ data/
 logs/
 checkpoints/
 runs/
+runs_dryrun/
 out/
 *.mp4
 *.gif

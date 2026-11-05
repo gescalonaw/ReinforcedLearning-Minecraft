@@ -4,6 +4,10 @@
 #
 #   conda env create -f environment.yml
 #   conda activate minerl
+#
+# Después de MineRL, instalar las librerías de entrenamiento (ver docs/ENTRENAMIENTO.md):
+#   pip install --extra-index-url https://download.pytorch.org/whl/cpu "torch==2.2.2+cpu" "tianshou==0.4.8" tensorboard
+# (van después de MineRL para que no cambien la versión de gym 0.19)
 name: minerl
 channels:
   - conda-forge
