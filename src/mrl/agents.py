@@ -145,4 +145,12 @@ def greedy_action(policy, obs):
     return int(logits.argmax(-1)[0])
 
 
+@torch.no_grad()
+def sample_action(policy, obs):
+    """Acción estocástica: se sortea según las probabilidades del actor (como al entrenar)."""
+    policy.eval()
+    logits, _ = policy.actor(obs[None])
+    return int(torch.distributions.Categorical(logits=logits).sample()[0])
+
+
 BUILDERS = {"ppo": build_ppo, "sac": build_sac}
