@@ -1,0 +1,2 @@
+episode,world_seed,episode_return,episode_length,success,minerl_error,seconds
+0,1000,1.0,600,0,0,51.1
