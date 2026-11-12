@@ -43,7 +43,43 @@ SAC_DEFAULTS = dict(
     step_per_collect=4,
     update_per_step=0.25,       # 1 actualización cada 4 pasos del entorno
     batch_size=64,
+    target_update_steps=0,      # 0 = actualización suave de la red objetivo con tau en cada paso
 )
+
+# Configuraciones alternativas, elegibles con --preset en scripts/train.py.
+PRESETS = {
+    "sac": {
+        # "estable": más cercano a CleanRL (sac_atari.py) y con menos entropía objetivo.
+        #   - entropía objetivo 0.5·ln(72) ≈ 2.1 (en vez de 3.8, casi al azar)
+        #   - 20 000 pasos al azar antes de aprender (CleanRL: learning_starts=20000)
+        #   - red objetivo copiada completa cada 8000 pasos (CleanRL: target_network_frequency=8000)
+        "estable": dict(target_entropy_scale=0.5, start_steps=20_000, target_update_steps=8_000),
+    },
+    "ppo": {},
+}
+
+
+class HardTargetDiscreteSAC(DiscreteSACPolicy):
+    """DiscreteSACPolicy de Tianshou, con opción de copiar la red objetivo cada N actualizaciones.
+
+    Tianshou 0.4.8 solo hace la actualización suave (tau). CleanRL, en cambio, copia
+    los críticos completos a la red objetivo cada 8000 pasos del entorno, lo que suele
+    ser más estable en SAC discreto. Con target_update_freq=0 se comporta igual que el
+    original. El algoritmo no cambia en nada más.
+    """
+
+    def __init__(self, *args, target_update_freq=0, **kwargs):
+        self._target_update_freq = int(target_update_freq)
+        self._n_updates = 0
+        super().__init__(*args, **kwargs)
+
+    def sync_weight(self):
+        if self._target_update_freq <= 0:
+            return super().sync_weight()
+        self._n_updates += 1
+        if self._n_updates % self._target_update_freq == 0:
+            self.critic1_old.load_state_dict(self.critic1.state_dict())
+            self.critic2_old.load_state_dict(self.critic2.state_dict())
 
 
 def _logits_categorical(logits):
@@ -90,8 +126,12 @@ def build_sac(obs_shape, n_actions, action_space, device="cpu", **hp):
     log_alpha = torch.zeros(1, requires_grad=True, device=device)
     alpha_optim = torch.optim.Adam([log_alpha], lr=cfg["alpha_lr"])
 
-    policy = DiscreteSACPolicy(
+    # target_update_steps está en pasos del entorno; se pasa a actualizaciones de la red.
+    target_update_freq = round(cfg["target_update_steps"] * cfg["update_per_step"]) \
+        if cfg["target_update_steps"] else 0
+    policy = HardTargetDiscreteSAC(
         actor, actor_optim, critic1, critic1_optim, critic2, critic2_optim,
+        target_update_freq=target_update_freq,
         tau=cfg["tau"],
         gamma=cfg["gamma"],
         alpha=(target_entropy, log_alpha, alpha_optim),

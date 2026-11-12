@@ -5,6 +5,7 @@ from .wrappers import (
     N_DISCRETE_ACTIONS,
     TASKS,
     ActionRepeat,
+    AutoRestart,
     PovStack,
     DiscreteCamera,
     HybridCamera,

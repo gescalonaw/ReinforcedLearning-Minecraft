@@ -87,7 +87,7 @@ Por defecto son **100 000 pasos del agente** (= 400 000 frames de Minecraft) en 
 
 **Duración estimada:** sin aprender, el entorno da ~10 pasos/seg. Con el aprendizaje en CPU, estima **~4 a 6 horas por corrida**; SAC es algo más lento porque actualiza la red durante la recolección. Mide el primer run y ajusta el plan.
 
-Mientras corre, **no cierres la ventana de Minecraft** (si se cierra, el entrenamiento se cae) y evita que el PC entre en suspensión.
+Mientras corre, **no cierres la ventana de Minecraft** y evita que el PC entre en suspensión. Si Minecraft se cae solo, `train.py` lo vuelve a abrir y sigue (verás `[AutoRestart]` en el log).
 
 Para que siga corriendo aunque cierres la terminal, usa `tmux`:
 
@@ -140,6 +140,22 @@ python scripts/train.py --algo sac --hp buffer_size=30000
 ```
 
 Los valores por defecto están en `src/mrl/agents.py` (`PPO_DEFAULTS` y `SAC_DEFAULTS`).
+
+### Configuración alternativa de SAC: `--preset estable`
+
+Con los valores por defecto, SAC discreto no aprendió Treechop (una semilla quedó casi al azar y otra colapsó a una sola acción, con α divergiendo). El preset `estable` prueba una configuración más cercana a CleanRL (`sac_atari.py`):
+
+| | por defecto | `estable` |
+|---|---|---|
+| entropía objetivo | 0.89 · ln(72) ≈ 3.8 | 0.5 · ln(72) ≈ 2.1 |
+| pasos al azar al inicio | 5 000 | 20 000 |
+| red objetivo | suave, τ = 0.005 cada actualización | copia completa cada 8 000 pasos |
+
+```bash
+python scripts/train.py --algo sac --preset estable --task treechop --seed 0 --steps 500000 --threads 14
+```
+
+Los resultados quedan en `runs/treechop/sac_discrete_estable/seed<N>/`, separados de los de la configuración por defecto. El algoritmo sigue siendo `DiscreteSACPolicy` de Tianshou; solo se agrega la opción de copiar la red objetivo cada N pasos (`HardTargetDiscreteSAC` en `src/mrl/agents.py`).
 
 ---
 
@@ -235,7 +251,9 @@ Tomados de los ejemplos de Atari de Tianshou y de CleanRL (Huang et al., 2022), 
 | `could not detect X Server` | Revisa `echo $DISPLAY` (debe ser `:0`) y `docs/INSTALL_MINERL.md`. |
 | `Ya existe .../checkpoint.pth` | Usa `--resume` para seguir esa corrida, o cambia `--seed`. |
 | `Killed` sin más mensaje | Falta RAM: ver sección 7. |
-| Minecraft se cierra a mitad | Retoma con `--resume`. La columna `minerl_error` de `episodes.csv` cuenta las caídas. |
+| Minecraft se cierra a mitad (`BrokenPipeError`, `ConnectionResetError`) | `train.py` lo reabre solo (`[AutoRestart]` en el log) y sigue; el episodio queda con `minerl_error=1` en `episodes.csv`. Si igual se cae todo, retoma con `--resume`. |
+| `invalid-installed-package ... gym 0.19.0` al instalar | pip demasiado nuevo: `python -m pip install "pip<24.1"` y repetir. |
+| SAC se cae al evaluar o grabar video en paralelo | Falta RAM para dos Minecraft. No evalúes mientras SAC entrena. |
 | numpy 2.x después de instalar | `pip install "numpy<2"` |
 
 ---

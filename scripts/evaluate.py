@@ -81,7 +81,8 @@ def main():
     torch.manual_seed(args.seed_offset)
     np.random.seed(args.seed_offset)
     mode = "random" if args.random else ("stochastic" if args.stochastic else "deterministic")
-    name = "random" if args.random else f"{cfg['algo']}_discrete"
+    name = "random" if args.random else (
+        f"{cfg['algo']}_discrete" + (f"_{cfg['preset']}" if cfg.get("preset") else ""))
     suffix = "_stochastic" if args.stochastic and not args.random else ""
     out_dir = args.out or args.run or os.path.join(ROOT, "runs", task, "random")
     os.makedirs(out_dir, exist_ok=True)

@@ -41,8 +41,8 @@ from tianshou.trainer import offpolicy_trainer, onpolicy_trainer  # noqa: E402
 from tianshou.utils import TensorboardLogger  # noqa: E402
 from torch.utils.tensorboard import SummaryWriter  # noqa: E402
 
-from mrl.agents import BUILDERS, load_checkpoint, save_checkpoint  # noqa: E402
-from mrl.envs import make_agent_env  # noqa: E402
+from mrl.agents import BUILDERS, PRESETS, load_checkpoint, save_checkpoint  # noqa: E402
+from mrl.envs import AutoRestart, make_agent_env  # noqa: E402
 
 
 class EpisodeCSV(gym.Wrapper):
@@ -96,6 +96,8 @@ def main():
     p.add_argument("--threads", type=int, default=4, help="hilos de PyTorch")
     p.add_argument("--action-repeat", type=int, default=4)
     p.add_argument("--camera-deg", type=float, default=15.0)
+    p.add_argument("--preset", default=None,
+                   help="configuración alternativa de mrl/agents.py (ej. SAC: estable)")
     p.add_argument("--hp", action="append", default=[], metavar="clave=valor",
                    help="sobrescribe un hiperparámetro (ver mrl/agents.py)")
     p.add_argument("--resume", action="store_true", help="retoma desde checkpoint.pth")
@@ -103,15 +105,21 @@ def main():
                    help="Minecraft simulado y pocos pasos: solo prueba que el código corre")
     args = p.parse_args()
 
-    hp = parse_hp(args.hp)
+    if args.preset and args.preset not in PRESETS[args.algo]:
+        sys.exit(f"Preset desconocido para {args.algo}: {args.preset}. "
+                 f"Opciones: {list(PRESETS[args.algo])}")
+    preset = PRESETS[args.algo].get(args.preset, {}) if args.preset else {}
+    hp = {**preset, **parse_hp(args.hp)}
     if args.dry_run:
         args.steps, args.step_per_epoch = 600, 300
-        hp = {**dict(step_per_collect=128, batch_size=32, buffer_size=2000, start_steps=100), **hp}
+        hp = {**preset, **dict(step_per_collect=128, batch_size=32, buffer_size=2000,
+                               start_steps=100), **parse_hp(args.hp)}
         if args.algo == "ppo":
             hp.pop("buffer_size"), hp.pop("start_steps")
         args.logdir = os.path.join(ROOT, "runs_dryrun")
 
-    run_dir = os.path.join(args.logdir, args.task, f"{args.algo}_discrete", f"seed{args.seed}")
+    run_dir = os.path.join(args.logdir, args.task, f"{args.algo}_discrete" + (f"_{args.preset}" if args.preset else ""),
+                           f"seed{args.seed}")
     os.makedirs(run_dir, exist_ok=True)
     ckpt_path = os.path.join(run_dir, "checkpoint.pth")
     if os.path.exists(ckpt_path) and not args.resume and not args.dry_run:
@@ -123,8 +131,9 @@ def main():
 
     def env_fn(rank):
         def _make():
-            env = make_agent_env(args.task, action_repeat=args.action_repeat,
-                                 camera_deg=args.camera_deg, fake=args.dry_run)
+            env = AutoRestart(lambda: make_agent_env(
+                args.task, action_repeat=args.action_repeat,
+                camera_deg=args.camera_deg, fake=args.dry_run))
             return EpisodeCSV(env, os.path.join(run_dir, f"episodes{'' if rank == 0 else rank}.csv"))
         return _make
 

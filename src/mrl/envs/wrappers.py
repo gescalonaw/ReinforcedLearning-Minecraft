@@ -17,6 +17,8 @@ Pila de wrappers (de adentro hacia afuera):
     MineRL -> ActionRepeat -> PovStack -> DiscreteCamera | HybridCamera
            [-> FlatDiscreteAction -> PovArray   (solo make_agent_env)]
 """
+import sys
+import time
 from collections import deque
 
 import gym
@@ -209,6 +211,56 @@ class PovArray(gym.ObservationWrapper):
         for i, v in enumerate(obs["vec"]):
             extra[i].fill(int(round((float(v) + 1.0) * 127.5)))
         return np.concatenate([obs["pov"], extra], axis=0)
+
+
+class AutoRestart(gym.Wrapper):
+    """Si Minecraft se cae (BrokenPipe, ConnectionReset, etc.), lo vuelve a abrir.
+
+    MineRL 0.4.4 a veces pierde la conexión con Minecraft en entrenamientos largos.
+    Sin esto el entrenamiento completo se cae; con esto se cierra el episodio actual
+    (queda marcado minerl_error=1 en episodes.csv), se abre un Minecraft nuevo y se sigue.
+
+    make_fn: función sin argumentos que crea el entorno completo.
+    """
+
+    def __init__(self, make_fn, max_restarts=50, wait_s=10):
+        super().__init__(make_fn())
+        self.make_fn = make_fn
+        self.max_restarts = max_restarts
+        self.wait_s = wait_s
+        self.restarts = 0
+        self._last_obs = None
+
+    def _rebuild(self, error):
+        self.restarts += 1
+        print(f"\n[AutoRestart] Minecraft se cayó ({type(error).__name__}: {error}). "
+              f"Reiniciando ({self.restarts}/{self.max_restarts})...", file=sys.stderr, flush=True)
+        if self.restarts > self.max_restarts:
+            raise RuntimeError("Demasiados reinicios de Minecraft") from error
+        try:
+            self.env.close()
+        except Exception:
+            pass
+        time.sleep(self.wait_s)
+        self.env = self.make_fn()
+
+    def reset(self, **kwargs):
+        for _ in range(5):
+            try:
+                self._last_obs = self.env.reset(**kwargs)
+                return self._last_obs
+            except Exception as e:  # noqa: BLE001  (MineRL lanza errores de socket variados)
+                self._rebuild(e)
+        raise RuntimeError("No se pudo reiniciar Minecraft después de 5 intentos")
+
+    def step(self, action):
+        try:
+            obs, reward, done, info = self.env.step(action)
+        except Exception as e:  # noqa: BLE001
+            self._rebuild(e)
+            return self._last_obs, 0.0, True, {"minerl_error": True}
+        self._last_obs = obs
+        return obs, reward, done, info
 
 
 def make_env(task="treechop", mode="discrete", action_repeat=4, n_frames=4,
