@@ -1,0 +1,16 @@
+{
+  "agent": "ppo_discrete",
+  "mode": "stochastic",
+  "task": "treechop",
+  "episodes": 1,
+  "world_seeds": [
+    1000
+  ],
+  "mean_return": 15.0,
+  "std_return": 0.0,
+  "median_return": 15.0,
+  "mean_length": 600.0,
+  "success_rate": 0.0,
+  "minerl_errors": 0,
+  "mean_top_action_frac": 0.19
+}
