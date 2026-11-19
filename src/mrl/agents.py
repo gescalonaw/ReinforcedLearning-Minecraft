@@ -44,6 +44,9 @@ SAC_DEFAULTS = dict(
     update_per_step=0.25,       # 1 actualización cada 4 pasos del entorno
     batch_size=64,
     target_update_steps=0,      # 0 = actualización suave de la red objetivo con tau en cada paso
+    n_step=1,                   # retornos de n pasos (1 = SAC estándar)
+    alpha_min=0.0,              # límites para α automático (0 = sin límite)
+    alpha_max=0.0,
 )
 
 # Configuraciones alternativas, elegibles con --preset en scripts/train.py.
@@ -54,6 +57,12 @@ PRESETS = {
         #   - 20 000 pasos al azar antes de aprender (CleanRL: learning_starts=20000)
         #   - red objetivo copiada completa cada 8000 pasos (CleanRL: target_network_frequency=8000)
         "estable": dict(target_entropy_scale=0.5, start_steps=20_000, target_update_steps=8_000),
+        # "robusto": "estable" + dos protecciones contra las fallas que vimos en Treechop.
+        #   - retornos de 3 pasos: la recompensa escasa (+1 por tronco) llega más rápido a
+        #     los valores Q, para que los críticos distingan acciones (falla de la semilla 0)
+        #   - α acotado a [0,005; 0,5]: no puede irse a 0 ni explotar (falla de la semilla 1)
+        "robusto": dict(target_entropy_scale=0.5, start_steps=20_000, target_update_steps=8_000,
+                        n_step=3, alpha_min=0.005, alpha_max=0.5),
     },
     "ppo": {},
 }
@@ -68,10 +77,27 @@ class HardTargetDiscreteSAC(DiscreteSACPolicy):
     original. El algoritmo no cambia en nada más.
     """
 
-    def __init__(self, *args, target_update_freq=0, **kwargs):
+    def __init__(self, *args, target_update_freq=0, alpha_min=0.0, alpha_max=0.0, **kwargs):
         self._target_update_freq = int(target_update_freq)
         self._n_updates = 0
         super().__init__(*args, **kwargs)
+        # Límites opcionales para α automático (en log). 0 = sin límite.
+        self._log_alpha_bounds = None
+        if self._is_auto_alpha and alpha_min > 0 and alpha_max > 0:
+            self._log_alpha_bounds = (math.log(alpha_min), math.log(alpha_max))
+            self._clamp_alpha()
+
+    def _clamp_alpha(self):
+        with torch.no_grad():
+            self._log_alpha.clamp_(*self._log_alpha_bounds)
+        self._alpha = self._log_alpha.detach().exp()
+
+    def learn(self, batch, **kwargs):
+        result = super().learn(batch, **kwargs)
+        if self._log_alpha_bounds is not None:
+            self._clamp_alpha()
+            result["alpha"] = self._alpha.item()
+        return result
 
     def sync_weight(self):
         if self._target_update_freq <= 0:
@@ -132,11 +158,13 @@ def build_sac(obs_shape, n_actions, action_space, device="cpu", **hp):
     policy = HardTargetDiscreteSAC(
         actor, actor_optim, critic1, critic1_optim, critic2, critic2_optim,
         target_update_freq=target_update_freq,
+        alpha_min=cfg["alpha_min"],
+        alpha_max=cfg["alpha_max"],
         tau=cfg["tau"],
         gamma=cfg["gamma"],
         alpha=(target_entropy, log_alpha, alpha_optim),
         reward_normalization=False,
-        estimation_step=1,
+        estimation_step=cfg["n_step"],
         action_space=action_space,
     )
     return policy, cfg

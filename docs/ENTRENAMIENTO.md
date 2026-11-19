@@ -155,7 +155,22 @@ Con los valores por defecto, SAC discreto no aprendió Treechop (una semilla que
 python scripts/train.py --algo sac --preset estable --task treechop --seed 0 --steps 500000 --threads 14
 ```
 
-Los resultados quedan en `runs/treechop/sac_discrete_estable/seed<N>/`, separados de los de la configuración por defecto. El algoritmo sigue siendo `DiscreteSACPolicy` de Tianshou; solo se agrega la opción de copiar la red objetivo cada N pasos (`HardTargetDiscreteSAC` en `src/mrl/agents.py`).
+### `--preset robusto` (recomendado para volver a probar SAC)
+
+Es `estable` más dos protecciones contra las dos fallas que vimos en Treechop:
+
+| | Falla que ataca | Qué hace |
+|---|---|---|
+| Retornos de 3 pasos (`n_step=3`) | Semilla 0: los críticos no distinguían acciones y la política quedó casi al azar | La recompensa escasa (+1 por tronco) se propaga 3 veces más rápido a los valores Q |
+| α acotado a [0,005; 0,5] | Semilla 1: α explotó a 200.000 y la política colapsó | α ya no puede irse a 0 ni divergir |
+
+```bash
+python scripts/train.py --algo sac --preset robusto --task treechop --seed 0 --steps 500000 --threads 14
+```
+
+Qué mirar a los ~150k pasos: `alpha` debería moverse dentro del rango (no pegado en 0,005 ni en 0,5 todo el rato) y los troncos por episodio deberían empezar a separarse de ~1.
+
+Los resultados quedan en `runs/treechop/sac_discrete_robusto/seed<N>/` (o `sac_discrete_estable`), separados de los de la configuración por defecto. El algoritmo sigue siendo `DiscreteSACPolicy` de Tianshou; solo se agrega la opción de copiar la red objetivo cada N pasos (`HardTargetDiscreteSAC` en `src/mrl/agents.py`).
 
 ---
 
